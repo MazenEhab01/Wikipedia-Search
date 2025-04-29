@@ -1,16 +1,15 @@
 package com.wikipediasearch;
 
-// ... (keep existing imports)
+// Import necessary classes from sub-packages
 import com.wikipediasearch.crawler.WebCrawler;
 import com.wikipediasearch.invertedIndex.Index5;
 import com.wikipediasearch.invertedIndex.Index5.SearchResult;
-import com.wikipediasearch.invertedIndex.SourceRecord;
-import com.wikipediasearch.invertedIndex.Posting;
-import com.wikipediasearch.invertedIndex.DictEntry;
+import com.wikipediasearch.invertedIndex.SourceRecord; // May not be directly needed, but good practice
+import com.wikipediasearch.invertedIndex.Posting;    // May not be directly needed
+import com.wikipediasearch.invertedIndex.DictEntry;   // May not be directly needed
 
-import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
+// Removed unused stream import: import java.util.stream.Collectors;
 
 public class Main {
 
@@ -23,116 +22,115 @@ public class Main {
         // ============================================================
         System.out.println("Phase 1: Crawling websites...");
         WebCrawler crawler = new WebCrawler();
+
+        // ***** CORRECTED: Use EXACT seed URLs from assignment spec *****
         List<String> seedUrls = Arrays.asList(
-                "https://en.wikipedia.org/wiki/Pharaoh",
-                "https.en.wikipedia.org/wiki/List_of_pharaohs",
-                "https://en.wikipedia.org/wiki/Ancient_Egypt",
-                "https://en.wikipedia.org/wiki/Cleopatra",
-                "https://en.wikipedia.org/wiki/Nile"
+                "https://en.wikipedia.org/wiki/List_of_pharaohs",
+                "https://en.wikipedia.org/wiki/Pharaoh"
         );
-        Map<String, String> crawledPages = crawler.crawl(seedUrls);
-        System.out.println("Crawling complete. Found " + crawledPages.size() + " pages.");
-        if (crawledPages == null || crawledPages.isEmpty()) {
-            System.err.println("Error: No pages were crawled. Indexing cannot proceed. Exiting.");
-            return;
+
+        // Crawl starting from the seeds
+        Map<String, String> crawledPages = crawler.crawl(seedUrls); // Max 10 pages constraint is inside crawler
+
+        System.out.println("Crawling complete. Successfully processed " + crawledPages.size() + " pages.");
+        if (crawledPages.isEmpty()) {
+            System.err.println("Error: No pages were crawled successfully. Indexing cannot proceed. Exiting.");
+            return; // Exit if crawling failed completely
         }
 
         // ============================================================
         // STEP 2: Build the Inverted Index
         // ============================================================
         System.out.println("\nPhase 2: Building index from crawled data...");
-        Index5 index = new Index5();
+        Index5 index = new Index5(); // Index5 now uses the external calculator classes internally
         index.buildIndex(crawledPages);
-        System.out.println("Index built successfully.");
+
+        if (index.getNumberOfDocuments() == 0) {
+            System.err.println("Error: Index built, but contains 0 documents. Cannot search. Exiting.");
+            return;
+        }
+        System.out.println("Index built successfully: " + index.getIndexSize() + " terms, " + index.getNumberOfDocuments() + " documents.");
+
 
         // --- Optional: Print dictionary sample ---
-        // System.out.println("\n--- Printing Dictionary (Sample) ---");
         // index.printDictionary();
-        // System.out.println("--- End of Dictionary Printout ---");
 
-
-        // ============================================================
-        // **** MODIFIED: STEP 2.5: Print ALL Document Vectors (TF-IDF) ****
-        // ============================================================
-        System.out.println("\n--- Printing Document TF-IDF Vectors ---");
-        // Removed: printVectorLimit and printedCount variables
-
-        // Get the total number of documents indexed
-        int totalDocs = crawledPages.size(); // Or use a getter from Index5 if available
-
-        for (int docId = 0; docId < totalDocs; docId++) {
-            // Removed the check: if (printedCount >= printVectorLimit) { ... break; }
-
-            // Ideally, get the URL or identifier for this docId from index.sources
-            // Example: SourceRecord sr = index.getSourceRecord(docId); (needs getter in Index5)
-            // String docIdentifier = (sr != null) ? sr.getL() : "Unknown Doc ID";
-            // System.out.println("\nDocument Vector for: " + docIdentifier + " (ID: " + docId + ")");
-            System.out.println("\nDocument Vector for Doc ID: " + docId); // Using ID for now
+        // --- Optional: Print Document Vectors (TF-IDF) for Debugging ---
+        /*
+        System.out.println("\n--- Printing Document TF-IDF Vectors (Sample) ---");
+        int totalDocs = index.getNumberOfDocuments();
+        int vectorsToPrint = Math.min(totalDocs, 5); // Limit printout
+        for (int docId = 0; docId < vectorsToPrint; docId++) {
+            SourceRecord sr = index.getSourceRecord(docId);
+            String docIdentifier = (sr != null) ? sr.getUrl() : "Unknown Doc ID";
+            System.out.println("\nDocument Vector for: " + docIdentifier + " (ID: " + docId + ")");
+            System.out.printf("  Pre-calculated Magnitude (Norm): %.6f%n", index.getDocumentMagnitude(docId));
 
             Map<String, Double> vector = index.getDocumentTfIdfVector(docId);
-
             if (vector.isEmpty()) {
                 System.out.println("  <Vector is empty or docId not found>");
             } else {
-                System.out.println("  Vector contains " + vector.size() + " non-zero term components:");
-                // Sort terms alphabetically for consistent display
-                List<String> sortedTerms = new ArrayList<>(vector.keySet());
-                Collections.sort(sortedTerms);
+                System.out.println("  Vector contains " + vector.size() + " non-zero term components (showing top 20):");
+                List<Map.Entry<String, Double>> sortedVector = new ArrayList<>(vector.entrySet());
+                // Sort by TF-IDF score descending for more informative view
+                sortedVector.sort((e1, e2) -> Double.compare(e2.getValue(), e1.getValue()));
 
                 int termPrintCount = 0;
-                int termPrintLimit = 20; // KEEPING limit on terms *per vector* for readability
-
-                for (String term : sortedTerms) {
-                    if(termPrintCount >= termPrintLimit) {
-                        System.out.println("    ... (limiting term printout to first " + termPrintLimit + ")");
+                int termPrintLimit = 20;
+                for (Map.Entry<String, Double> entry : sortedVector) {
+                     if (termPrintCount >= termPrintLimit) {
+                        System.out.println("    ... (limiting term printout)");
                         break;
                     }
-                    // Print term word and its TF-IDF score
-                    System.out.printf("    Term: '%-15s'  TF-IDF: %.6f%n", term, vector.get(term));
+                    System.out.printf("    Term: '%-15s'  TF-IDF: %.6f%n", entry.getKey(), entry.getValue());
                     termPrintCount++;
                 }
             }
-            // Removed: printedCount++;
         }
+         if (totalDocs > vectorsToPrint) System.out.println("... (Limit reached)");
         System.out.println("--- End of Document Vector Printout ---");
-
+        */
 
         // ============================================================
         // STEP 3: Ranked Querying
         // ============================================================
         System.out.println("\nPhase 3: Ranked Search (TF-IDF & Cosine Similarity). Type 'exit' to quit.");
         Scanner scanner = new Scanner(System.in);
-        // ... (rest of the query loop remains the same) ...
+
         while (true) {
             System.out.print("\nEnter search query: ");
             String queryInput = scanner.nextLine();
 
-            if (queryInput == null || queryInput.trim().isEmpty()) {
-                System.out.println("Query cannot be empty.");
-                continue;
+            if (queryInput == null) { // Handle potential null input if Scanner has issues
+                System.out.println("Received null input, exiting.");
+                break;
             }
             String trimmedQuery = queryInput.trim();
             if (trimmedQuery.equalsIgnoreCase("exit")) {
                 break; // Exit the loop
             }
+            if (trimmedQuery.isEmpty()) {
+                System.out.println("Query cannot be empty.");
+                continue;
+            }
 
-            // Use the ranked search method from Index5
+            // Perform ranked search using Index5 method
             List<SearchResult> rankedResults = index.findQueryRanked(trimmedQuery);
 
             System.out.println("\nRanked Search Results for '" + trimmedQuery + "' (" + rankedResults.size() + " relevant docs found):");
 
             if (rankedResults.isEmpty()) {
-                System.out.println("  <No relevant documents found>");
+                System.out.println("  <No relevant documents found for this query>");
             } else {
-                // Display the top 10 results
+                // Display the top 10 results (or fewer if less than 10 found)
                 int resultsToShow = Math.min(rankedResults.size(), 10);
                 System.out.println("  --- Top " + resultsToShow + " Results ---");
                 for (int i = 0; i < resultsToShow; i++) {
                     SearchResult result = rankedResults.get(i);
-                    System.out.printf("  Rank %d: %s%n", (i + 1), result);
+                    System.out.printf("  Rank %2d: %s%n", (i + 1), result); // Use result.toString()
                 }
-                if (rankedResults.size() > 10) {
-                    System.out.println("  ...");
+                if (rankedResults.size() > resultsToShow) {
+                    System.out.println("  ... (showing top " + resultsToShow + " of " + rankedResults.size() + ")");
                 }
             }
             System.out.println("----------------------------------------");
@@ -142,5 +140,4 @@ public class Main {
         System.out.println("\n--- Exiting Search Engine ---");
 
     } // End of main method
-
 } // End of Main class
