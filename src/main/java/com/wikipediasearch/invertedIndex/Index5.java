@@ -12,8 +12,8 @@ public class Index5 {
     // --- Fields ---
     private Map<String, DictEntry> index;          // Term -> DictEntry (df, postings list)
     private Map<Integer, SourceRecord> sources;    // docId (int) -> SourceRecord (URL, title, etc.)
-    // private Stemmer stemmer; // Stemmer is present but not used per assignment spec
-    // private Set<String> stopWords; // Stop words not implemented here
+     private Stemmer stemmer; // Stemmer is present but not used per assignment spec
+     private Set<String> stopWords; // Stop words not implemented here
     private Map<Integer, Double> docMagnitudes;    // Store pre-calculated document norms (magnitudes)
 
     // --- Constructor ---
@@ -21,10 +21,13 @@ public class Index5 {
         index = new HashMap<>();
         sources = new HashMap<>();
         docMagnitudes = new HashMap<>();
-        // stemmer = new Stemmer(); // Initialize if used
-        // stopWords = new HashSet<>(); // Initialize if used
-        // loadStopWords("stopwords.txt"); // Example if needed
+         stemmer = new Stemmer(); // Initialize if used
+         stopWords = new HashSet<>(); // Initialize if used
+//         loadStopWords("stopwords.txt"); // Example if needed
     }
+    /*
+        doc1 -> term1, term2, term3
+     */
 
     // --- buildIndex Method (Updated - No functional change, still doesn't use stemmer) ---
     public void buildIndex(Map<String, String> pages) {
@@ -70,23 +73,26 @@ public class Index5 {
                     continue;
                 }
 
-
                 tokenCount++;
 
                 // 3. Stop Word Removal (NOT IMPLEMENTED)
-                // if (stopWords.contains(term)) continue;
+                 if (stopWord(term)) continue;
 
                 // 4. Stemming (NOT APPLIED per assignment spec)
-                // String stemmedTerm = stemmer.stem(term);
-                String processedTerm = term; // Using the term directly after lowercase and split
+                stemmer.addString(term); // Add the term to the stemmer
+                stemmer.stem();          // Perform stemming
+                String stemmedTerm = stemmer.toString(); // Get the stemmed result
 
-                termFrequenciesInDoc.put(processedTerm, termFrequenciesInDoc.getOrDefault(processedTerm, 0) + 1);
+                if (stemmedTerm.isEmpty()) continue; // Skip if stemming produces nothing
+
+                termFrequenciesInDoc.put(stemmedTerm, termFrequenciesInDoc.getOrDefault(stemmedTerm, 0) + 1);
             }
             currentSource.setLength(tokenCount);
 
             // --- Update Inverted Index ---
             for (Map.Entry<String, Integer> tfEntry : termFrequenciesInDoc.entrySet()) {
                 String processedTerm = tfEntry.getKey();
+                // No need to stem again, already done above
                 int termFreqInThisDoc = tfEntry.getValue();
 
                 DictEntry dictEntry = index.computeIfAbsent(processedTerm, k -> new DictEntry());
@@ -182,9 +188,14 @@ public class Index5 {
             if (term.isEmpty() || term.matches("\\d+") || term.length() < 2) { // Apply same filters as indexing
                 continue;
             }
-            // Apply stop word removal if used
+            if(stopWord(term)) continue; // Apply stop word filter
             // Apply stemming if used
-            processedTerms.add(term);
+            stemmer.addString(term); // Add the term to the stemmer
+            stemmer.stem();          // Perform stemming
+            String stemmedTerm = stemmer.toString(); // Get the stemmed result
+
+            if (stemmedTerm.isEmpty()) continue; // Skip if stemming produces nothing
+            processedTerms.add(stemmedTerm); // Add to processed terms
         }
         return processedTerms;
     }
@@ -290,13 +301,8 @@ public class Index5 {
 
         // 4. Sort results by score (descending)
         Collections.sort(results); // Uses compareTo in SearchResult
-
         return results;
     }
-
-
-    // --- Boolean AND Search Method (Kept for reference/testing, not required) ---
-    // Needs updates similar to findQueryRanked if used (e.g., processQuery usage)
     public String findQueryBooleanAnd(String phrase) {
         List<String> queryTerms = processQuery(phrase); // Process query consistently
         if (queryTerms.isEmpty()){
@@ -362,45 +368,6 @@ public class Index5 {
         return resultBuilder.toString();
     }
 
-    // --- Method to retrieve the TF-IDF vector for a specific document (MODIFIED to use TFIDFCalculator) ---
-    public Map<String, Double> getDocumentTfIdfVector(int docId) {
-        Map<String, Double> tfIdfVector = new LinkedHashMap<>();
-        int N = sources.size();
-
-        if (N == 0 || !sources.containsKey(docId)) {
-            System.err.println("Warning: Cannot get vector for invalid docId: " + docId + " or index is empty.");
-            return Collections.emptyMap();
-        }
-
-        // Iterate through all terms to find those in the specific document
-        for (Map.Entry<String, DictEntry> indexEntry : index.entrySet()) {
-            String term = indexEntry.getKey();
-            DictEntry dictEntry = indexEntry.getValue();
-
-            Posting targetPosting = null;
-            for (Posting p : dictEntry.getPlist()) {
-                if (p.getDocId() == docId) {
-                    targetPosting = p;
-                    break;
-                }
-            }
-
-            if (targetPosting != null) {
-                int tf = targetPosting.getDtf();
-                int df = dictEntry.getDoc_freq();
-
-                // Use TFIDFCalculator to get the score for this term in this doc
-                double tfIdf = TFIDFCalculator.calculateTfIdf(tf, N, df);
-
-                if (tfIdf > 0) { // Only store non-zero components
-                    tfIdfVector.put(term, tfIdf);
-                }
-            }
-        }
-        return tfIdfVector;
-    }
-
-
     // --- Method to retrieve SourceRecord (useful for Main) ---
     public SourceRecord getSourceRecord(int docId) {
         return sources.get(docId);
@@ -440,7 +407,16 @@ public class Index5 {
         }
         System.out.println("--- End of Dictionary Sample ---");
     }
-
+    boolean stopWord(String word) {
+        if (word.equals("the") || word.equals("to") || word.equals("be") || word.equals("for") || word.equals("from") || word.equals("in")
+                || word.equals("a") || word.equals("into") || word.equals("by") || word.equals("or") || word.equals("and") || word.equals("that")) {
+            return true;
+        }
+        if (word.length() < 2) {
+            return true;
+        }
+        return false;
+    }
 
     // --- Inner Helper Class for Search Results (No changes needed) ---
     public static class SearchResult implements Comparable<SearchResult> {

@@ -20,7 +20,7 @@ public class SourceRecord {
     /**
      * Constructor to create a SourceRecord.
      * Initializes length to 0.
-     *
+     * word : termFreq, docslist(postingList)
      * @param docId The unique integer ID assigned to this document.
      * @param url   The URL of the document. Cannot be null or empty.
      * @param title A title for the document (e.g., extracted or placeholder). Can be null.
